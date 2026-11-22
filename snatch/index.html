@@ -1,2 +1,118 @@
-<!doctype html><html lang="en-GB"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Snatch Block</title>
-<body style="margin:0;background:#03040A;color:#EEF4FF;font:16px/1.5 system-ui,sans-serif"><main style="padding:56px 20px"><h1 style="font-size:24px">Snatch Block</h1><p>This game is not built yet. Approved look: Red Earth.</p><a href="../looks/snatch/b/" style="color:#E9A800;display:block;line-height:44px">Open the approved look</a><a href="../" style="color:#38E1FF;display:inline-block;line-height:44px">Back to all games</a></main></html>
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#100E0C">
+<meta name="description" content="Snatch Block: a rigging puzzle. Performance test build.">
+<title>Snatch Block</title>
+<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
+<link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
+
+<style>
+@font-face{font-family:"Barlow Condensed";src:url(BarlowCondensed-Bold.woff2) format("woff2");font-weight:700;font-display:swap}
+html,body,#canvas{margin:0;padding:0;border:0}
+html,body{background:#100E0C;overflow:hidden;overscroll-behavior:none}
+body{position:fixed;inset:0;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;color:#fff;font:700 18px/1.3 "Barlow Condensed",sans-serif}
+#canvas{display:block;touch-action:none}
+#canvas:focus{outline:none}
+#status{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#4F2215;text-align:center}
+#status h1{margin:0;font-size:22px}
+#bar{width:200px;height:10px;border-radius:5px;background:#100E0C;overflow:hidden}
+#bar i{display:block;height:100%;background:#E9A800;transform-origin:left;transform:scaleX(0)}
+#note{margin:0 24px}
+#insets{position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+</style>
+<script>
+(() => {
+  'use strict';
+
+  // Render at no more than twice the CSS size, as the approved look does. A 3x iPhone would
+  // otherwise fill 2.25 times as many pixels for no visible gain.
+  const real = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio');
+  const ratio = () => Math.min((real && real.get ? real.get.call(window) : real && real.value) || 1, 2);
+  Object.defineProperty(window, 'devicePixelRatio', { configurable: true, get: ratio });
+
+  // iPhone: ask for playback audio, so the silent switch does not mute the game, and unlock
+  // every audio context inside the tap itself. Godot's own resume can run a frame too late.
+  const Native = window.AudioContext || window.webkitAudioContext;
+  const contexts = [];
+  if (Native) {
+    const Wrapped = class extends Native {
+      constructor(...args) { super(...args); contexts.push(this); }
+    };
+    window.AudioContext = window.webkitAudioContext = Wrapped;
+  }
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* not supported */ }
+
+  let touched = false;
+  function unlock() {
+    touched = true;
+    for (const context of contexts) {
+      if (context.state === 'running' || context.state === 'closed') continue;
+      const silence = context.createBufferSource();
+      silence.buffer = context.createBuffer(1, 1, context.sampleRate);
+      silence.connect(context.destination);
+      silence.start(0);
+      context.resume().catch(() => {});
+    }
+  }
+  for (const type of ['pointerdown', 'pointerup', 'touchend', 'mouseup', 'keydown']) {
+    window.addEventListener(type, unlock, { capture: true, passive: true });
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (!touched) return;
+    for (const context of contexts) {
+      if (context.state === 'closed') continue;
+      (document.hidden ? context.suspend() : context.resume()).catch(() => {});
+    }
+  });
+  document.addEventListener('contextmenu', (event) => event.preventDefault());
+
+  let ready = 0;
+  window.sbReady = () => {
+    if (!ready) ready = performance.now();
+    return ready;
+  };
+  window.sbInsets = () => {
+    const style = getComputedStyle(document.getElementById('insets'));
+    return `${parseFloat(style.paddingTop) || 0},${parseFloat(style.paddingBottom) || 0}`;
+  };
+})();
+</script>
+</head>
+<body>
+<div id="insets"></div>
+<canvas id="canvas">Your browser does not support the canvas tag.</canvas>
+<div id="status">
+<h1>SNATCH BLOCK</h1>
+<div id="bar"><i></i></div>
+<p id="note">Loading</p>
+<noscript>JavaScript is needed to run this game.</noscript>
+</div>
+<script src="index.js"></script>
+<script>
+(() => {
+  'use strict';
+  const status = document.getElementById('status');
+  const note = document.getElementById('note');
+  const fill = document.querySelector('#bar i');
+  const missing = Engine.getMissingFeatures({ threads: false });
+  function fail(error) {
+    note.textContent = `Could not start. Reload the page. (${(error && error.message) || error})`;
+    console.error(error);
+  }
+  if (missing.length) {
+    fail(missing.join(', '));
+    return;
+  }
+  new Engine({"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":1500028,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4}).startGame({
+    onProgress(current, total) {
+      if (current > 0 && total > 0) fill.style.transform = `scaleX(${Math.min(1, current / total)})`;
+    },
+  }).then(() => status.remove(), fail);
+})();
+</script>
+</body>
+</html>
+
