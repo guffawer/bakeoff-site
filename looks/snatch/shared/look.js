@@ -90,8 +90,9 @@
   // Three layers, as in the Godot Line2D spec: shadow, base, scrolling lay pattern.
   function rope(points, scroll, thick = 4.5) {
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    line(points, 1.8, 3.2);
-    ctx.lineWidth = thick + 1; ctx.strokeStyle = 'rgba(0,0,0,.42)'; ctx.stroke();
+    // The shadow layer also edges the rope, which would otherwise vanish against the dusk sky.
+    line(points, 0.7, 1.4);
+    ctx.lineWidth = thick + 2.8; ctx.strokeStyle = 'rgba(20,8,4,.8)'; ctx.stroke();
     line(points);
     ctx.lineWidth = thick; ctx.strokeStyle = '#E8601C'; ctx.stroke();
 
@@ -111,7 +112,7 @@
   function rigging(t, load, pose) {
     const slack = t < SNAP ? Math.max(0, 1 - load / 0.45) : 1;
     const winch = { x: 72, y: 277 }, bucket = spritePoint(pose, 0.07, 0.62);
-    const boom = spritePoint(pose, 0.22, 0.22), rear = spritePoint(pose, 0.9, 0.62);
+    const boom = spritePoint(pose, 0.48, 0.38), rear = spritePoint(pose, 0.9, 0.62);
     const hitch = { x: 134, y: 180 }, scroll = t < SNAP ? t * 5 + load * 14 : 0;
     const block = { x: 176, y: 250 - Math.min(1, load) * 6 };
     const top = { x: block.x, y: block.y - 12 };

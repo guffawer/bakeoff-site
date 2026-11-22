@@ -8,8 +8,8 @@ Licences were checked on each source page on 22 Nov 2026.
 |---|---|---|---|---|---|
 | `*/assets/digger.webp` | Excavator Animation | https://sketchfab.com/3d-models/excavator-animation-940258497f9f4eba9710bb359a9e777e | CC BY 4.0 | tori1243 | Pre-rendered side view, relit |
 | `*/assets/loader.webp` | Bulldozer (a wheel loader) | https://sketchfab.com/3d-models/bulldozer-2137d93b5a804161bc65b44d583aa68e | CC BY 4.0 | RobbyHollister | Pre-rendered side view, relit |
-| `*/assets/block.webp` | Crane hook | https://sketchfab.com/3d-models/crane-hook-43c6b3bccd3d4bc6b5c68b3ec79626d3 | CC BY 4.0 | Sasha Gaer | Pre-rendered, relit |
-| `*/assets/winch.webp` | Chatham Dockyard Winch 2 | https://sketchfab.com/3d-models/chatham-dockyard-winch-2-f0d68dbbcdbb4e59bc8e690a58dee7af | CC BY 4.0 | artfletch | Pre-rendered, relit |
+| `*/assets/block.webp` | Crane hook | https://sketchfab.com/3d-models/crane-hook-43c6b3bccd3d4bc6b5c68b3ec79626d3 | CC BY 4.0 | Sasha Gaer | Pre-rendered, relit, load stencil removed |
+| `*/assets/winch.webp` | Chatham Dockyard Winch 2 | https://sketchfab.com/3d-models/chatham-dockyard-winch-2-f0d68dbbcdbb4e59bc8e690a58dee7af | CC BY 4.0 | artfletch | Pre-rendered, relit, maker's plate removed |
 
 Licence: https://creativecommons.org/licenses/by/4.0/ . Files were obtained through the Objaverse open dataset; each licence was confirmed on the original Sketchfab listing. Renders and textures were checked for brand marks.
 
