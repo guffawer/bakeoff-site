@@ -63,9 +63,12 @@
     bc.drawImage(art.bg, (back.width - w) / 2, (back.height - h) / 2, w, h);
     bc.setTransform(scale * dpr, 0, 0, scale * dpr, ox * dpr, oy * dpr);
 
-    bc.globalAlpha = 0.28;
-    for (const p of T.guide) draw(bc, 'glow-w', p.x, p.y, 7);
-    bc.globalAlpha = 1;
+    // The route preview is UI, so Clip Mode bakes the layer without it.
+    if (!document.body.classList.contains('clip')) {
+      bc.globalAlpha = 0.28;
+      for (const p of T.guide) draw(bc, 'glow-w', p.x, p.y, 7);
+      bc.globalAlpha = 1;
+    }
 
     for (const p of T.parts) {
       if (p.t === 0.5) continue; // the part that gets placed at the start of the loop
@@ -221,12 +224,14 @@
     document.querySelector('[data-clip]').addEventListener('click', async (e) => {
       e.stopPropagation();
       document.body.classList.add('clip');
+      resize();
       if (!Sound.on) await sound(true); // clips need the music
       restart();
     });
     document.addEventListener('click', () => {
       if (!document.body.classList.contains('clip')) return;
       document.body.classList.remove('clip');
+      resize();
       restart();
     });
   }
@@ -255,10 +260,10 @@
     const all = [...own.map((n) => [n, `assets/${n}.webp`]), ...common.map((n) => [n, `../shared/assets/${n}.webp`])];
     await Promise.all(all.map(async ([name, src]) => { art[name] = await image(src); }));
     Sound.preload();
+    if (query.has('clip')) document.body.classList.add('clip');
     resize();
     addEventListener('resize', resize);
     controls();
-    if (query.has('clip')) document.body.classList.add('clip');
     epoch = previous = performance.now();
     requestAnimationFrame(frame);
     document.body.dataset.ready = '1';
