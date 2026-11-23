@@ -13,6 +13,14 @@ var ground_mat: ShaderMaterial
 var mist_mats: Array[ShaderMaterial] = []
 var tilt: ShaderMaterial
 var clock := 0.0
+var still_mode := false
+var slip_node: Node3D
+var roll_node: Node3D
+var remote_node: Node3D
+var fps_label: Label
+var frame_times := PackedFloat32Array()
+var fps_timer := 0.0
+var slow_streak := 0
 
 var bus: Node3D
 var truck: Node3D
@@ -26,6 +34,7 @@ func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	var still := ""
 	if args.has("--still"): still = args[args.find("--still") + 1]
+	still_mode = still != ""
 	var container := SubViewportContainer.new(); container.stretch = true
 	container.set_anchors_preset(Control.PRESET_FULL_RECT); add_child(container)
 	frame = SubViewport.new(); frame.msaa_3d = Viewport.MSAA_DISABLED
@@ -33,6 +42,9 @@ func _ready() -> void:
 	container.add_child(frame)
 	if still != "":
 		container.stretch = false; frame.size = Vector2i(1080, 1920)
+	else:
+		# 3D renders below native resolution and is scaled up; the tilt-shift hides the softness.
+		frame.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR; frame.scaling_3d_scale = 0.75
 	world = Node3D.new(); frame.add_child(world)
 	_environment()
 	_ground()
@@ -45,6 +57,9 @@ func _ready() -> void:
 	_camera()
 	_post()
 	_overlay()
+	_fps_readout()
+	frame.size_changed.connect(_relayout)
+	_relayout()
 	if still != "": _save_still(still)
 
 # ---------------------------------------------------------------- world
@@ -296,9 +311,7 @@ func _post() -> void:
 	var r := ColorRect.new(); r.set_anchors_preset(Control.PRESET_FULL_RECT); r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tilt = ShaderMaterial.new(); tilt.shader = load("res://shaders/tiltshift.gdshader"); r.material = tilt
 	cl.add_child(r)
-	var screen_eye := cam.unproject_position(eye) / Vector2(frame.size)
-	var screen_mid := cam.unproject_position(eye.lerp(winch, 0.4)) / Vector2(frame.size)
-	tilt.set_shader_parameter("focus", (screen_eye.y + screen_mid.y) * 0.5)
+
 
 # ---------------------------------------------------------------- in-world interface
 
@@ -315,11 +328,56 @@ func _overlay() -> void:
 	var we := WorldEnvironment.new(); var e := Environment.new(); e.background_mode = Environment.BG_CLEAR_COLOR
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR; e.ambient_light_color = Color(0.5, 0.52, 0.58); e.ambient_light_energy = 0.7
 	we.environment = e; ow.add_child(we)
-	var aspect := float(frame.size.x) / float(frame.size.y)
-	var hw := 5.0 * aspect
-	_job_slip(ow, Vector3(-hw + 1.95, 4.4, 0.0))
-	_tool_roll(ow, Vector3(-hw + 1.75, -4.35, 0.0))
-	_remote(ow, Vector3(hw - 0.85, -3.55, 0.0))
+	slip_node = _job_slip(ow, Vector3.ZERO)
+	roll_node = _tool_roll(ow, Vector3.ZERO)
+	remote_node = _remote(ow, Vector3.ZERO)
+
+# Keeps the tilt-shift band on the rope and the in-world kit pinned to the screen edges.
+func _relayout() -> void:
+	if frame.size.x <= 0 or frame.size.y <= 0: return
+	var sz := Vector2(frame.size)
+	var screen_eye := cam.unproject_position(eye) / sz
+	var screen_mid := cam.unproject_position(eye.lerp(winch, 0.4)) / sz
+	tilt.set_shader_parameter("focus", (screen_eye.y + screen_mid.y) * 0.5)
+	var hw := 5.0 * sz.x / sz.y
+	# Narrow phones (19.5:9 and taller) get a smaller tool roll, remote and slip so nothing overlaps.
+	var k := clampf(hw / 2.82, 0.72, 1.0)
+	var rk := clampf((2.0 * hw - 1.5 * k - 0.3) / 4.1, 0.55, 1.0)
+	slip_node.scale = Vector3.ONE * 0.82 * k
+	slip_node.position = Vector3(-hw + 0.15 + 2.15 * 0.82 * k, 5.0 - 0.6 * k, 0.0)
+	remote_node.scale = Vector3.ONE * k
+	remote_node.position = Vector3(hw - 0.2 - 0.65 * k, -5.0 + 1.45 * k, 0.0)
+	roll_node.scale = Vector3.ONE * rk
+	roll_node.position = Vector3(-hw + 0.1 + 1.65 * rk, -5.0 + 0.65 * rk, 0.0)
+
+# Debug fps readout (Clip Mode will hide it). It also drops the 3D resolution on slow devices.
+func _fps_readout() -> void:
+	var cl := CanvasLayer.new(); cl.layer = 10; add_child(cl)
+	fps_label = Label.new(); fps_label.add_theme_font_size_override("font_size", 12)
+	fps_label.add_theme_color_override("font_color", Color(0.85, 0.9, 0.85, 0.85))
+	fps_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	fps_label.set_anchors_preset(Control.PRESET_TOP_RIGHT); fps_label.position = Vector2(-120, 4)
+	fps_label.size = Vector2(116, 40); fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	fps_label.visible = not still_mode
+	cl.add_child(fps_label)
+
+func _update_fps(delta: float) -> void:
+	frame_times.append(delta); fps_timer += delta
+	if fps_timer < 1.0: return
+	var n := frame_times.size(); var sum := 0.0
+	var sorted := frame_times.duplicate(); sorted.sort()
+	for d in frame_times: sum += d
+	var avg := n / sum
+	var worst := 1.0 / sorted[maxi(0, int(n * 0.99) - 1)]
+	var scale := frame.scaling_3d_scale
+	fps_label.text = "%d fps\nlow %d  ·  3D %d%%" % [roundi(avg), roundi(worst), roundi(scale * 100.0)]
+	if avg < 54.0: slow_streak += 1
+	else: slow_streak = 0
+	if slow_streak >= 2 and scale > 0.5:
+		frame.scaling_3d_scale = maxf(0.5, scale - 0.1); slow_streak = 0
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("window.lookFps = {avg: %f, low: %f, scale: %f};" % [avg, worst, frame.scaling_3d_scale])
+	frame_times.clear(); fps_timer = 0.0
 
 func _mat(col: Color, rough := 0.7, metal := 0.0) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new(); m.albedo_color = col; m.roughness = rough; m.metallic = metal; return m
@@ -334,16 +392,16 @@ func _label(parent: Node3D, text: String, pos: Vector3, px: float, col: Color, w
 	if w > 0: l.autowrap_mode = TextServer.AUTOWRAP_WORD; l.width = w
 	parent.add_child(l); return l
 
-func _job_slip(ow: Node3D, at: Vector3) -> void:
-	var slip := Node3D.new(); slip.position = at; slip.scale = Vector3.ONE * 0.82; slip.rotation.z = deg_to_rad(-2.0); ow.add_child(slip)
+func _job_slip(ow: Node3D, at: Vector3) -> Node3D:
+	var slip := Node3D.new(); slip.position = at; slip.rotation.z = deg_to_rad(-2.0); ow.add_child(slip)
 	_box(slip, Vector3(4.3, 1.15, 0.02), Vector3.ZERO, _mat(Color(0.86, 0.84, 0.76), 0.95))
 	_box(slip, Vector3(4.3, 0.05, 0.03), Vector3(0, 0.42, 0.01), _mat(Color(0.55, 0.6, 0.66), 0.9))
 	_label(slip, "JOB 0417  ·  MONSOON RECOVERY CO.", Vector3(-2.0, 0.3, 0.03), 0.0042, Color(0.25, 0.27, 0.3)).horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_label(slip, "Bus off the edge, ghat road", Vector3(-2.0, -0.02, 0.03), 0.0078, Color(0.1, 0.1, 0.12)).horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_label(slip, "Monsoon  ·  9:40 pm", Vector3(-2.0, -0.36, 0.03), 0.0052, Color(0.25, 0.27, 0.3)).horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	for n in slip.get_children(): if n is Label3D: n.offset = Vector2(0, 0)
+	return slip
 
-func _tool_roll(ow: Node3D, at: Vector3) -> void:
+func _tool_roll(ow: Node3D, at: Vector3) -> Node3D:
 	var roll := Node3D.new(); roll.position = at; ow.add_child(roll)
 	var canvas := _mat(Color(0.33, 0.31, 0.22), 1.0)
 	_box(roll, Vector3(3.3, 1.15, 0.08), Vector3.ZERO, canvas)
@@ -367,9 +425,10 @@ func _tool_roll(ow: Node3D, at: Vector3) -> void:
 	var hub := MeshInstance3D.new(); var hm := CylinderMesh.new(); hm.top_radius = 0.09; hm.bottom_radius = 0.09; hm.height = 0.22
 	hub.mesh = hm; hub.material_override = steel; hub.rotation.x = PI / 2.0; blk.add_child(hub)
 	_box(blk, Vector3(0.5, 0.06, 0.2), Vector3(0, -0.36, 0), steel)
+	return roll
 	_box(blk, Vector3(0.08, 0.16, 0.12), Vector3(0, 0.34, 0), steel)
 
-func _remote(ow: Node3D, at: Vector3) -> void:
+func _remote(ow: Node3D, at: Vector3) -> Node3D:
 	var r := Node3D.new(); r.position = at; r.rotation.z = deg_to_rad(-7.0); ow.add_child(r)
 	var body := _mat(Color(0.14, 0.145, 0.15), 0.55)
 	_box(r, Vector3(1.25, 2.1, 0.32), Vector3.ZERO, body)
@@ -387,11 +446,13 @@ func _remote(ow: Node3D, at: Vector3) -> void:
 		var b := MeshInstance3D.new(); var bm := CylinderMesh.new(); bm.top_radius = spec[2]; bm.bottom_radius = spec[2]; bm.height = 0.1
 		b.mesh = bm; b.material_override = _mat(Color(0.7, 0.71, 0.7), 0.5); b.rotation.x = PI / 2.0; b.position = spec[1]; r.add_child(b)
 		_label(r, spec[0], spec[1] + Vector3(0, 0, 0.06), 0.0062 if spec[0] == "IN" else 0.0042, Color(0.1, 0.1, 0.1))
+	return r
 
 # ---------------------------------------------------------------- loop and capture
 
 func _process(delta: float) -> void:
 	clock += delta
+	if fps_label and not still_mode: _update_fps(delta)
 	if rain_mat: rain_mat.set_shader_parameter("t", clock)
 	if ground_mat: ground_mat.set_shader_parameter("t", clock)
 	if tilt: tilt.set_shader_parameter("t", clock)
