@@ -89,7 +89,16 @@ body {
 	text-align: center;
 	z-index: 1;
 }
-		</style>
+		
+#status { background: #0b0d10 url(still/still.jpg) center / cover no-repeat !important; justify-content: flex-end !important; }
+#status::before { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(11,13,16,.92) 0%, rgba(11,13,16,.35) 40%, rgba(11,13,16,.15) 100%); }
+#status-progress { position: relative !important; bottom: auto !important; width: 70% !important; height: 8px; margin: 0 auto 10px !important; appearance: none; -webkit-appearance: none; border: 0; border-radius: 4px; background: rgba(255,255,255,.18); overflow: hidden; }
+#status-progress::-webkit-progress-bar { background: rgba(255,255,255,.18); }
+#status-progress::-webkit-progress-value { background: #ff6b0a; }
+#status-progress::-moz-progress-bar { background: #ff6b0a; }
+#load-note { position: relative; color: #e6e3da; font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; margin: 0 16px 12%; }
+#load-note small { display: block; color: #9aa0a6; font-size: 13px; margin-top: 2px; }
+</style>
 		<meta name="theme-color" content="#0b0d10">
 	</head>
 	<body>
@@ -105,11 +114,12 @@ body {
 			<img id="status-splash" class="show-image--false fullsize--true use-filter--true" src="index.png" alt="">
 			<progress id="status-progress"></progress>
 			<div id="status-notice"></div>
+			<div id="load-note">Loading the game engine, about 10 MB<small>Faster after the first visit</small></div>
 		</div>
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":455092,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":456404,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
@@ -196,7 +206,7 @@ const engine = new Engine(GODOT_CONFIG);
 			displayFailureNotice(missingMsg + missing.join('\n'));
 		}
 	} else {
-		setStatusMode('progress');
+		setStatusMode('progress'); statusProgress.style.display = 'block';
 		engine.startGame({
 			'onProgress': function (current, total) {
 				if (current > 0 && total > 0) {

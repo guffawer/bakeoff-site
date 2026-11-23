@@ -18,6 +18,7 @@ var slip_node: Node3D
 var roll_node: Node3D
 var remote_node: Node3D
 var fps_label: Label
+var fps_box: PanelContainer
 var frame_times := PackedFloat32Array()
 var fps_timer := 0.0
 var slow_streak := 0
@@ -43,8 +44,10 @@ func _ready() -> void:
 	if still != "":
 		container.stretch = false; frame.size = Vector2i(1080, 1920)
 	else:
-		# 3D renders below native resolution and is scaled up; the tilt-shift hides the softness.
-		frame.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR; frame.scaling_3d_scale = 0.75
+		# The scene and its tilt-shift render at half the screen resolution and are scaled up; the blur
+		# hides the softness. The kit and the readout draw on top at full resolution.
+		container.stretch_shrink = 2
+		frame.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR; frame.scaling_3d_scale = 1.0
 	world = Node3D.new(); frame.add_child(world)
 	_environment()
 	_ground()
@@ -52,6 +55,7 @@ func _ready() -> void:
 	_vehicles()
 	_lights()
 	_rope_static()
+	_blob(bus, Vector2(3.4, 8.6)); _blob(truck, Vector2(3.6, 6.4))
 	_rain()
 	_mist()
 	_camera()
@@ -78,7 +82,7 @@ func _environment() -> void:
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC; e.tonemap_exposure = 1.1
 	e.fog_enabled = true; e.fog_light_color = Color(0.11, 0.13, 0.155); e.fog_density = 0.007
 	e.fog_sky_affect = 1.0
-	e.glow_enabled = true; e.glow_intensity = 0.7; e.glow_bloom = 0.04; e.glow_hdr_threshold = 0.9
+	e.glow_enabled = false; e.glow_intensity = 0.7; e.glow_bloom = 0.04; e.glow_hdr_threshold = 0.9
 	we.environment = e; world.add_child(we)
 
 func _ground() -> void:
@@ -189,11 +193,11 @@ func _vehicles() -> void:
 
 func _lights() -> void:
 	var moon := DirectionalLight3D.new(); moon.light_color = Color(0.6, 0.7, 0.9); moon.light_energy = 0.55
-	moon.rotation_degrees = Vector3(-62, 35, 0); moon.shadow_enabled = true
+	moon.rotation_degrees = Vector3(-62, 35, 0); moon.shadow_enabled = false
 	world.add_child(moon)
 	# Truck headlights on the bus.
 	var hl := SpotLight3D.new(); hl.light_color = Color(1.0, 0.88, 0.68); hl.light_energy = 6.5
-	hl.spot_range = 32.0; hl.spot_angle = 26.0; hl.spot_attenuation = 0.8; hl.shadow_enabled = true
+	hl.spot_range = 32.0; hl.spot_angle = 26.0; hl.spot_attenuation = 0.8; hl.shadow_enabled = false
 	world.add_child(hl)
 	hl.global_transform = Transform3D(Basis.looking_at(eye - winch + Vector3(0, -0.6, 0)), truck.transform * Vector3(0.0, 1.5, 2.9))
 	spots.append(hl)
@@ -221,6 +225,16 @@ func _beam(l: SpotLight3D) -> void:
 	# Cone axis is local Y; point local -Y along the beam.
 	var y := -d; var x := y.cross(Vector3.FORWARD if absf(y.y) > 0.9 else Vector3.UP).normalized(); var z := x.cross(y)
 	mi.global_transform = Transform3D(Basis(x, y, z), l.global_position + d * h * 0.5)
+
+# Soft painted shadow under a vehicle, in place of real-time shadows.
+func _blob(n: Node3D, size: Vector2) -> void:
+	var q := QuadMesh.new(); q.size = size; q.orientation = PlaneMesh.FACE_Y
+	var mi := MeshInstance3D.new(); mi.mesh = q
+	var m := ShaderMaterial.new(); var sh := Shader.new()
+	sh.code = "shader_type spatial; render_mode unshaded, depth_draw_never, cull_disabled, shadows_disabled; void fragment(){ vec2 d = (UV - 0.5) * 2.0; float a = 1.0 - smoothstep(0.35, 1.0, length(d * vec2(1.0, 1.0))); ALBEDO = vec3(0.0); ALPHA = a * 0.55; }"
+	m.shader = sh; mi.material_override = m; mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	n.add_child(mi); mi.position = Vector3(0, 0.08, 0)
+	if n == truck: mi.position = Vector3(0, 0.08, 0.2)
 
 # ---------------------------------------------------------------- rope (static for the still)
 
@@ -262,7 +276,7 @@ static func _tube(pts: PackedVector3Array, r: float) -> ArrayMesh:
 # ---------------------------------------------------------------- weather
 
 func _rain() -> void:
-	var n := 3600
+	var n := 2400
 	var rng := RandomNumberGenerator.new(); rng.seed = 5
 	var v := PackedVector3Array(); var uv := PackedVector2Array(); var idx := PackedInt32Array()
 	for i in n:
@@ -316,7 +330,9 @@ func _post() -> void:
 # ---------------------------------------------------------------- in-world interface
 
 func _overlay() -> void:
-	var cl := CanvasLayer.new(); cl.layer = 2; frame.add_child(cl)
+	var cl := CanvasLayer.new(); cl.layer = 2
+	if still_mode: frame.add_child(cl)
+	else: add_child(cl)
 	var c := SubViewportContainer.new(); c.stretch = true; c.set_anchors_preset(Control.PRESET_FULL_RECT)
 	c.mouse_filter = Control.MOUSE_FILTER_IGNORE; cl.add_child(c)
 	overlay_vp = SubViewport.new(); overlay_vp.own_world_3d = true; overlay_vp.transparent_bg = true
@@ -353,13 +369,17 @@ func _relayout() -> void:
 # Debug fps readout (Clip Mode will hide it). It also drops the 3D resolution on slow devices.
 func _fps_readout() -> void:
 	var cl := CanvasLayer.new(); cl.layer = 10; add_child(cl)
-	fps_label = Label.new(); fps_label.add_theme_font_size_override("font_size", 12)
-	fps_label.add_theme_color_override("font_color", Color(0.85, 0.9, 0.85, 0.85))
-	fps_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
-	fps_label.set_anchors_preset(Control.PRESET_TOP_RIGHT); fps_label.position = Vector2(-120, 4)
-	fps_label.size = Vector2(116, 40); fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	fps_label.visible = not still_mode
-	cl.add_child(fps_label)
+	var box := PanelContainer.new()
+	var sb := StyleBoxFlat.new(); sb.bg_color = Color(0, 0, 0, 0.72); sb.set_corner_radius_all(8)
+	sb.content_margin_left = 12; sb.content_margin_right = 12; sb.content_margin_top = 6; sb.content_margin_bottom = 6
+	box.add_theme_stylebox_override("panel", sb)
+	box.position = Vector2(8, 8)
+	box.visible = not still_mode
+	fps_label = Label.new(); fps_label.add_theme_font_size_override("font_size", 24)
+	fps_label.add_theme_color_override("font_color", Color(1, 1, 1))
+	fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; fps_label.text = "measuring..."
+	box.add_child(fps_label); cl.add_child(box)
+	fps_box = box
 
 func _update_fps(delta: float) -> void:
 	frame_times.append(delta); fps_timer += delta
@@ -370,11 +390,15 @@ func _update_fps(delta: float) -> void:
 	var avg := n / sum
 	var worst := 1.0 / sorted[maxi(0, int(n * 0.99) - 1)]
 	var scale := frame.scaling_3d_scale
-	fps_label.text = "%d fps\nlow %d  ·  3D %d%%" % [roundi(avg), roundi(worst), roundi(scale * 100.0)]
-	if avg < 54.0: slow_streak += 1
+	# "res" is relative to the half-resolution frame: 100% = half the phone's native pixels per side.
+	fps_label.text = "%d FPS\nlow %d  ·  res %d%%" % [roundi(avg), roundi(worst), roundi(scale * 100.0)]
+	var vw := get_viewport().get_visible_rect().size.x
+	fps_box.reset_size(); fps_box.position = Vector2(vw - fps_box.size.x - 10.0, 10.0)
+	# Ignore the first seconds (shader compilation stutter), then step down only after 3 slow seconds.
+	if clock > 6.0 and avg < 54.0: slow_streak += 1
 	else: slow_streak = 0
-	if slow_streak >= 2 and scale > 0.5:
-		frame.scaling_3d_scale = maxf(0.5, scale - 0.1); slow_streak = 0
+	if slow_streak >= 3 and scale > 0.6:
+		frame.scaling_3d_scale = maxf(0.6, scale - 0.1); slow_streak = 0
 	if OS.has_feature("web"):
 		JavaScriptBridge.eval("window.lookFps = {avg: %f, low: %f, scale: %f};" % [avg, worst, frame.scaling_3d_scale])
 	frame_times.clear(); fps_timer = 0.0
