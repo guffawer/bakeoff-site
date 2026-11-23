@@ -1,0 +1,5 @@
+.godot/
+raw/
+build/
+*.import.tmp
+review/
