@@ -3,12 +3,20 @@ extends Node
 # Checkpoint 2 builds the static look. Run with `-- --still out.png` to save one 1080x1920 frame.
 
 const CART := "res://assets/cartoon/"
+const BUILD := "4"
 
 var frame: SubViewport
 var world: Node3D
 var cam: Camera3D
 var overlay_vp: SubViewport
 var rain_mat: ShaderMaterial
+var rain_mi: MeshInstance3D
+var ground_mi: MeshInstance3D
+var tilt_rect: ColorRect
+var overlay_layer: CanvasLayer
+var plain_ground: StandardMaterial3D
+var bench_mode := false
+var bench_log: Label
 var ground_mat: ShaderMaterial
 var mist_mats: Array[ShaderMaterial] = []
 var tilt: ShaderMaterial
@@ -62,6 +70,9 @@ func _ready() -> void:
 	_post()
 	_overlay()
 	_fps_readout()
+	bench_mode = args.has("--bench")
+	if OS.has_feature("web"): bench_mode = bench_mode or str(JavaScriptBridge.eval("location.search")).contains("bench")
+	if bench_mode: _bench()
 	frame.size_changed.connect(_relayout)
 	_relayout()
 	if still != "": _save_still(still)
@@ -90,6 +101,7 @@ func _ground() -> void:
 	mi.mesh = Terrain.make_mesh(-24.0, 32.0, -40.0, 12.0, 0.9)
 	ground_mat = ShaderMaterial.new(); ground_mat.shader = load("res://shaders/ground.gdshader")
 	mi.material_override = ground_mat
+	ground_mi = mi
 	world.add_child(mi)
 	var mk := MeshInstance3D.new(); mk.mesh = Terrain.make_markings()
 	var paint := StandardMaterial3D.new(); paint.albedo_color = Color(0.72, 0.72, 0.66); paint.roughness = 0.3; paint.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -294,6 +306,7 @@ func _rain() -> void:
 	rain_mat.set_shader_parameter("centre", Vector3(5.0, 6.0, -9.0))
 	rain_mat.set_shader_parameter("spot_pos", PackedVector3Array([spots[0].global_position, spots[1].global_position]))
 	rain_mat.set_shader_parameter("spot_dir", PackedVector3Array([-spots[0].global_transform.basis.z, -spots[1].global_transform.basis.z]))
+	rain_mi = mi
 	mi.material_override = rain_mat; mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	world.add_child(mi)
 
@@ -324,6 +337,7 @@ func _post() -> void:
 	var cl := CanvasLayer.new(); cl.layer = 1; frame.add_child(cl)
 	var r := ColorRect.new(); r.set_anchors_preset(Control.PRESET_FULL_RECT); r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tilt = ShaderMaterial.new(); tilt.shader = load("res://shaders/tiltshift.gdshader"); r.material = tilt
+	tilt_rect = r
 	cl.add_child(r)
 
 
@@ -331,6 +345,7 @@ func _post() -> void:
 
 func _overlay() -> void:
 	var cl := CanvasLayer.new(); cl.layer = 2
+	overlay_layer = cl
 	if still_mode: frame.add_child(cl)
 	else: add_child(cl)
 	var c := SubViewportContainer.new(); c.stretch = true; c.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -391,17 +406,73 @@ func _update_fps(delta: float) -> void:
 	var worst := 1.0 / sorted[maxi(0, int(n * 0.99) - 1)]
 	var scale := frame.scaling_3d_scale
 	# "res" is relative to the half-resolution frame: 100% = half the phone's native pixels per side.
-	fps_label.text = "%d FPS\nlow %d  ·  res %d%%" % [roundi(avg), roundi(worst), roundi(scale * 100.0)]
+	fps_label.text = "build %s  ·  %d FPS\nlow %d  ·  res %d%%" % [BUILD, roundi(avg), roundi(worst), roundi(scale * 100.0)]
 	var vw := get_viewport().get_visible_rect().size.x
 	fps_box.reset_size(); fps_box.position = Vector2(vw - fps_box.size.x - 10.0, 10.0)
 	# Ignore the first seconds (shader compilation stutter), then step down only after 3 slow seconds.
-	if clock > 6.0 and avg < 54.0: slow_streak += 1
+	if not bench_mode and clock > 6.0 and avg < 54.0: slow_streak += 1
 	else: slow_streak = 0
 	if slow_streak >= 3 and scale > 0.6:
 		frame.scaling_3d_scale = maxf(0.6, scale - 0.1); slow_streak = 0
 	if OS.has_feature("web"):
 		JavaScriptBridge.eval("window.lookFps = {avg: %f, low: %f, scale: %f};" % [avg, worst, frame.scaling_3d_scale])
 	frame_times.clear(); fps_timer = 0.0
+
+# ?bench: runs the scene with one cost removed at a time and shows a table of the results.
+func _set_config(no_tilt: bool, no_rain: bool, plain_road: bool, no_kit: bool, res: float) -> void:
+	tilt_rect.visible = not no_tilt
+	rain_mi.visible = not no_rain
+	if plain_ground == null:
+		plain_ground = StandardMaterial3D.new(); plain_ground.vertex_color_use_as_albedo = true; plain_ground.roughness = 0.4
+		plain_ground.cull_mode = BaseMaterial3D.CULL_DISABLED
+	ground_mi.material_override = plain_ground if plain_road else ground_mat
+	overlay_layer.visible = not no_kit
+	frame.scaling_3d_scale = res
+
+func _measure(seconds: float) -> Array:
+	var times := PackedFloat32Array(); var t0 := Time.get_ticks_usec()
+	while (Time.get_ticks_usec() - t0) / 1e6 < seconds:
+		var a := Time.get_ticks_usec(); await get_tree().process_frame
+		times.append((Time.get_ticks_usec() - a) / 1e6)
+	var sum := 0.0
+	for d in times: sum += d
+	var sorted := times.duplicate(); sorted.sort()
+	return [times.size() / sum, 1.0 / sorted[maxi(0, int(times.size() * 0.99) - 1)]]
+
+func _bench() -> void:
+	var cl := CanvasLayer.new(); cl.layer = 11; add_child(cl)
+	var box := PanelContainer.new()
+	var sb := StyleBoxFlat.new(); sb.bg_color = Color(0, 0, 0, 0.82); sb.set_corner_radius_all(10)
+	sb.content_margin_left = 16; sb.content_margin_right = 16; sb.content_margin_top = 12; sb.content_margin_bottom = 12
+	box.add_theme_stylebox_override("panel", sb); box.position = Vector2(12, 120); cl.add_child(box)
+	bench_log = Label.new(); bench_log.add_theme_font_size_override("font_size", 22)
+	box.add_child(bench_log)
+	var stages := [
+		["Full scene", [false, false, false, false, 1.0]],
+		["No tilt-shift blur", [true, false, false, false, 1.0]],
+		["No rain", [false, true, false, false, 1.0]],
+		["Plain road shader", [false, false, true, false, 1.0]],
+		["No kit overlay", [false, false, false, true, 1.0]],
+		["Resolution 60%", [false, false, false, false, 0.6]],
+		["All of these off", [true, true, true, true, 0.6]],
+	]
+	var lines := ["BENCHMARK  ·  build " + BUILD, "Please wait about 50 s", ""]
+	bench_log.text = "\n".join(lines)
+	await get_tree().create_timer(4.0).timeout
+	var results := []
+	for st in stages:
+		var c: Array = st[1]
+		_set_config(c[0], c[1], c[2], c[3], c[4])
+		bench_log.text = "\n".join(lines + ["Running: " + st[0]])
+		await get_tree().create_timer(1.5).timeout
+		var r: Array = await _measure(4.0)
+		lines.append("%-20s %3d fps  low %3d" % [st[0], roundi(r[0]), roundi(r[1])])
+		results.append({"stage": st[0], "fps": r[0], "low": r[1]})
+	lines[1] = "Done. Screenshot this."
+	bench_log.text = "\n".join(lines)
+	_set_config(false, false, false, false, 1.0)
+	print(JSON.stringify(results))
+	if OS.has_feature("web"): JavaScriptBridge.eval("window.benchResults = %s;" % JSON.stringify(results))
 
 func _mat(col: Color, rough := 0.7, metal := 0.0) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new(); m.albedo_color = col; m.roughness = rough; m.metallic = metal; return m

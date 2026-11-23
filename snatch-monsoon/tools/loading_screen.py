@@ -12,7 +12,7 @@ css = """
 #load-note { position: relative; color: #e6e3da; font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; margin: 0 16px 12%; }
 #load-note small { display: block; color: #9aa0a6; font-size: 13px; margin-top: 2px; }
 """
-note = '<div id="load-note">Loading the game engine, about 10 MB<small>Faster after the first visit</small></div>'
+note = '<div id="load-note">Loading the game engine, about 10 MB<small>Build 4  ·  faster after the first visit</small></div>'
 if "load-note" not in s:
     s = s.replace("</style>", css + "</style>", 1)
     s = s.replace('<div id="status-notice"></div>', '<div id="status-notice"></div>\n\t\t\t' + note, 1)
