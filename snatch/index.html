@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#100E0C">
-<meta name="description" content="Snatch Block: a rigging puzzle. Performance test build.">
+<meta name="description" content="Snatch Block: a rigging puzzle. Recover a stuck excavator with rope, snatch blocks and anchors.">
 <title>Snatch Block</title>
 <link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
 <link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
@@ -21,6 +21,8 @@ body{position:fixed;inset:0;touch-action:none;-webkit-user-select:none;user-sele
 #bar{width:200px;height:10px;border-radius:5px;background:#100E0C;overflow:hidden}
 #bar i{display:block;height:100%;background:#E9A800;transform-origin:left;transform:scaleX(0)}
 #note{margin:0 24px}
+#turn{position:fixed;inset:0;z-index:2;display:none;align-items:center;justify-content:center;padding:24px;background:#100E0C;text-align:center}
+@media (orientation:landscape) and (max-height:500px) and (pointer:coarse){#turn{display:flex}}
 #insets{position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
 </style>
 <script>
@@ -83,6 +85,7 @@ body{position:fixed;inset:0;touch-action:none;-webkit-user-select:none;user-sele
 </head>
 <body>
 <div id="insets"></div>
+<div id="turn">Turn your phone upright to play.</div>
 <canvas id="canvas">Your browser does not support the canvas tag.</canvas>
 <div id="status">
 <h1>SNATCH BLOCK</h1>
@@ -106,7 +109,7 @@ body{position:fixed;inset:0;touch-action:none;-webkit-user-select:none;user-sele
     fail(missing.join(', '));
     return;
   }
-  new Engine({"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":1500028,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4}).startGame({
+  new Engine({"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":1528176,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4}).startGame({
     onProgress(current, total) {
       if (current > 0 && total > 0) fill.style.transform = `scaleX(${Math.min(1, current / total)})`;
     },

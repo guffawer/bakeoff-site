@@ -23,7 +23,7 @@ Licence: https://creativecommons.org/licenses/by/4.0/
 | `bg.webp`, `pit.webp`, `mud_tile.webp`, icon background | Muddy Tracks | https://polyhaven.com/a/muddy_tracks | Amal Kumar |
 | `bg.webp` | Red Laterite Soil Stones | https://polyhaven.com/a/red_laterite_soil_stones | Amal Kumar |
 | `bg.webp` | Red Mud Stones | https://polyhaven.com/a/red_mud_stones | Rob Tuytel |
-| `anchor.webp` | Boulder 01 | https://polyhaven.com/a/boulder_01 | Rico Cilliers |
+| `anchor.webp` (the boulder, lip rock and slope rock) | Boulder 01 | https://polyhaven.com/a/boulder_01 | Rico Cilliers |
 | `rope_lay.webp` | Rope001, tinted, edges cleared | https://ambientcg.com/a/Rope001 | ambientCG (Lennart Demes) |
 | `splat0.webp` to `splat2.webp`, `smoke.webp` | Particle Pack: dirt_01 to dirt_03, smoke_04, tinted | https://opengameart.org/content/particle-pack-80-sprites | Kenney |
 | `shadow.webp`, `rope_strip.webp` | Baked shadow and rope edge mask | Made for this project | SanSid Media |
